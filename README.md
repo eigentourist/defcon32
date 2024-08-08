@@ -8,8 +8,9 @@ Setup for this workshop consists of:
 - Installing Docker Desktop for your platform
 - Pulling or building the container image for the workshop
 
+You can find Docker Desktop for your platform at https://www.docker.com/products/docker-desktop.
 
-You can pull the container image for the workshop by launching Docker Desktop and then running the following command in a terminal or command window:
+Once Docker is installed and running, you can pull the container image for the workshop by launching Docker Desktop and then running the following command in a terminal or command window:
 
 docker pull eigentourist/defcon32:v1.0.0
 
