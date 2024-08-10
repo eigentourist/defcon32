@@ -62,7 +62,7 @@ int main() {
     }
     
     // Testing
-    printf("Testing the trained perceptron for XOR:\n");
+    printf("Testing the trained perceptron:\n");
     int correct = 0;
     for (int i = 0; i < 4; i++) {
         int result = predict(training_inputs[i], weights, bias);
