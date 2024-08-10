@@ -52,10 +52,10 @@ int main() {
     
     // Training data for AND gate
     double training_inputs[4][NUM_INPUTS] = {{0, 0}, {0, 1}, {1, 0}, {1, 1}};
-    int training_outputs[4] = {0, 0, 0, 1};
+    // int training_outputs[4] = {0, 0, 0, 1};
 
     // For OR gate, replace above training outputs with:
-    // int training_outputs[4] = {0, 1, 1, 1};
+    int training_outputs[4] = {0, 1, 1, 1};
     //
     // For NAND, replace above training outputs with:
     // int training_outputs[4] = {1, 1, 1, 0};

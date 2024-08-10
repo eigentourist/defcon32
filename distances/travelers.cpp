@@ -6,6 +6,7 @@
 #include <cmath>
 #include <algorithm>
 #include <numeric>
+#include <Eigen/Dense> 
 
 // Function to load CSV file into a matrix
 std::vector<std::vector<double>> loadCSV(const std::string &filename) {
@@ -53,7 +54,6 @@ std::vector<std::vector<double>> loadCSV(const std::string &filename) {
     return data;
 }
 
-
 // Function to save matrix to CSV file
 void saveCSV(const std::string &filename, const std::vector<std::vector<double>> &data, const std::vector<std::string> &header) {
     std::ofstream file(filename);
@@ -81,95 +81,48 @@ void saveCSV(const std::string &filename, const std::vector<std::vector<double>>
     file.close();
 }
 
-// Function to calculate the covariance matrix
-std::vector<std::vector<double>> calculateCovarianceMatrix(const std::vector<std::vector<double>> &data) {
-    size_t n = data.size();
-    size_t m = data[0].size();
-
-    std::vector<std::vector<double>> covarianceMatrix(m, std::vector<double>(m, 0.0));
-    std::vector<double> means(m, 0.0);
-
-    // Calculate means
-    for (const auto &row : data) {
-        for (size_t j = 0; j < m; ++j) {
-            means[j] += row[j];
-        }
-    }
-    for (size_t j = 0; j < m; ++j) {
-        means[j] /= n;
-    }
-
-    // Calculate covariance matrix
-    for (size_t i = 0; i < m; ++i) {
-        for (size_t j = i; j < m; ++j) {
-            double sum = 0.0;
-            for (size_t k = 0; k < n; ++k) {
-                sum += (data[k][i] - means[i]) * (data[k][j] - means[j]);
-            }
-            covarianceMatrix[i][j] = sum / (n - 1);
-            covarianceMatrix[j][i] = covarianceMatrix[i][j]; // Symmetric matrix
-        }
-    }
-
-    return covarianceMatrix;
+// Function to calculate the covariance matrix using Eigen
+Eigen::MatrixXd calculateCovarianceMatrix(const Eigen::MatrixXd &data) {
+    Eigen::MatrixXd centered = data.rowwise() - data.colwise().mean();
+    Eigen::MatrixXd cov = (centered.adjoint() * centered) / double(data.rows() - 1);
+    return cov;
 }
 
-// Function to calculate eigenvalues and eigenvectors (Placeholder for simplicity)
-std::pair<std::vector<double>, std::vector<std::vector<double>>> calculateEigen(const std::vector<std::vector<double>> &covarianceMatrix) {
-    // Placeholder for eigenvalue and eigenvector calculations.
-    // You can use specialized libraries like Eigen or Armadillo for this purpose.
-
-    // Eigen library: 
-    // - URL: https://eigen.tuxfamily.org
-    // - Installation: You can download the latest version from the website or install it via package managers like apt (for Ubuntu) using `sudo apt-get install libeigen3-dev`.
-    // - Eigen is open-source and licensed under the Mozilla Public License 2.0 (MPL-2.0).
-
-    // Armadillo library:
-    // - URL: http://arma.sourceforge.net
-    // - Installation: Available via package managers (e.g., `sudo apt-get install libarmadillo-dev` on Ubuntu) or you can download the source code from the website.
-    // - Armadillo is open-source and can be used under the Apache License 2.0 or GNU GPL 2+.
-
-
-    size_t m = covarianceMatrix.size();
-    std::vector<double> eigenvalues(m, 1.0); // Placeholder values
-    std::vector<std::vector<double>> eigenvectors(m, std::vector<double>(m, 0.0));
-
-    for (size_t i = 0; i < m; ++i) {
-        eigenvectors[i][i] = 1.0; // Identity matrix as placeholder
-    }
-
-    return {eigenvalues, eigenvectors};
+// Function to perform eigenvalue and eigenvector calculations using Eigen
+std::pair<Eigen::VectorXd, Eigen::MatrixXd> calculateEigen(const Eigen::MatrixXd &covarianceMatrix) {
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> solver(covarianceMatrix);
+    return {solver.eigenvalues().reverse(), solver.eigenvectors().rowwise().reverse()};
 }
 
 // Function to perform PCA
 std::vector<std::vector<double>> performPCA(const std::vector<std::vector<double>> &data, int reducedDimensions) {
-    std::vector<std::vector<double>> covarianceMatrix = calculateCovarianceMatrix(data);
-    auto [eigenvalues, eigenvectors] = calculateEigen(covarianceMatrix);
+    Eigen::MatrixXd dataMatrix = Eigen::MatrixXd::Zero(data.size(), data[0].size());
 
-    // Sort eigenvectors by eigenvalues
-    std::vector<size_t> indices(eigenvalues.size());
-    std::iota(indices.begin(), indices.end(), 0);
-    std::sort(indices.begin(), indices.end(), [&eigenvalues](size_t i1, size_t i2) {
-        return eigenvalues[i1] > eigenvalues[i2];
-    });
-
-    // Select top 'reducedDimensions' eigenvectors
-    std::vector<std::vector<double>> selectedEigenvectors(reducedDimensions);
-    for (int i = 0; i < reducedDimensions; ++i) {
-        selectedEigenvectors[i] = eigenvectors[indices[i]];
-    }
-
-    // Project data onto the new reduced dimensions
-    std::vector<std::vector<double>> reducedData(data.size(), std::vector<double>(reducedDimensions, 0.0));
+    // Convert std::vector<std::vector<double>> to Eigen::MatrixXd
     for (size_t i = 0; i < data.size(); ++i) {
-        for (int j = 0; j < reducedDimensions; ++j) {
-            for (size_t k = 0; k < data[0].size(); ++k) {
-                reducedData[i][j] += data[i][k] * selectedEigenvectors[j][k];
-            }
+        for (size_t j = 0; j < data[0].size(); ++j) {
+            dataMatrix(i, j) = data[i][j];
         }
     }
 
-    return reducedData;
+    Eigen::MatrixXd covarianceMatrix = calculateCovarianceMatrix(dataMatrix);
+    auto [eigenvalues, eigenvectors] = calculateEigen(covarianceMatrix);
+
+    // Select the top 'reducedDimensions' eigenvectors
+    Eigen::MatrixXd selectedEigenvectors = eigenvectors.leftCols(reducedDimensions);
+
+    // Project the data onto the new reduced dimensions
+    Eigen::MatrixXd reducedData = dataMatrix * selectedEigenvectors;
+
+    // Convert Eigen::MatrixXd back to std::vector<std::vector<double>>
+    std::vector<std::vector<double>> reducedDataVector(reducedData.rows(), std::vector<double>(reducedDimensions));
+    for (size_t i = 0; i < reducedData.rows(); ++i) {
+        for (int j = 0; j < reducedDimensions; ++j) {
+            reducedDataVector[i][j] = reducedData(i, j);
+        }
+    }
+
+    return reducedDataVector;
 }
 
 int main() {
