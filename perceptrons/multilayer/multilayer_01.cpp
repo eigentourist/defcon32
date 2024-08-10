@@ -1,254 +1,267 @@
 #include <iostream>
-#include <vector>
-#include <cmath>
-#include <random>
-#include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <vector>
 #include <string>
+#include <cmath>
+#include <random>
 
-// Activation function (sigmoid)
+
+// Activation function (Sigmoid) and its derivative
 double sigmoid(double x) {
     return 1.0 / (1.0 + std::exp(-x));
 }
 
-// Derivative of sigmoid function
 double sigmoid_derivative(double x) {
     return x * (1.0 - x);
 }
 
-class Neuron {
+// Class representing a single-layer neural network
+class NeuralNetwork {
 public:
-    std::vector<double> weights;
-    double bias;
-    double output;
+    NeuralNetwork(int inputSize, int hiddenSize, int outputSize);
 
-    Neuron(int inputs) : bias(0) {
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_real_distribution<> dis(-1.0, 1.0);
+    void train(std::vector<std::vector<double>> &inputs, std::vector<std::vector<double>> &outputs, int epochs, double learningRate);
+    std::vector<double> predict(std::vector<double> &input);
 
-        for (int i = 0; i < inputs; ++i) {
-            weights.push_back(dis(gen));
-        }
-    }
+private:
+    std::vector<std::vector<double>> weightsInputHidden;
+    std::vector<std::vector<double>> weightsHiddenOutput;
+
+    std::vector<double> hiddenLayer;
+    std::vector<double> outputLayer;
+
+    double randomWeight();
+    void forward(std::vector<double> &input);
+    void backward(std::vector<double> &input, std::vector<double> &output, double learningRate);
 };
 
-class Layer {
-public:
-    std::vector<Neuron> neurons;
+// Constructor initializes weights with random values
+NeuralNetwork::NeuralNetwork(int inputSize, int hiddenSize, int outputSize) {
+    weightsInputHidden.resize(inputSize, std::vector<double>(hiddenSize));
+    weightsHiddenOutput.resize(hiddenSize, std::vector<double>(outputSize));
+    hiddenLayer.resize(hiddenSize);
+    outputLayer.resize(outputSize);
 
-    Layer(int num_neurons, int inputs_per_neuron) {
-        for (int i = 0; i < num_neurons; ++i) {
-            neurons.emplace_back(inputs_per_neuron);
+    for (int i = 0; i < inputSize; ++i)
+        for (int j = 0; j < hiddenSize; ++j)
+            weightsInputHidden[i][j] = randomWeight();
+
+    for (int i = 0; i < hiddenSize; ++i)
+        for (int j = 0; j < outputSize; ++j)
+            weightsHiddenOutput[i][j] = randomWeight();
+}
+
+// Random weight initializer
+double NeuralNetwork::randomWeight() {
+    static std::mt19937 generator;
+    std::uniform_real_distribution<double> distribution(-1.0, 1.0);
+    return distribution(generator);
+}
+
+// Forward propagation
+void NeuralNetwork::forward(std::vector<double> &input) {
+    // Calculate hidden layer activations
+    for (int j = 0; j < hiddenLayer.size(); ++j) {
+        hiddenLayer[j] = 0.0;
+        for (int i = 0; i < input.size(); ++i) {
+            hiddenLayer[j] += input[i] * weightsInputHidden[i][j];
+        }
+        hiddenLayer[j] = sigmoid(hiddenLayer[j]);
+    }
+
+    // Calculate output layer activations
+    for (int j = 0; j < outputLayer.size(); ++j) {
+        outputLayer[j] = 0.0;
+        for (int i = 0; i < hiddenLayer.size(); ++i) {
+            outputLayer[j] += hiddenLayer[i] * weightsHiddenOutput[i][j];
+        }
+        outputLayer[j] = sigmoid(outputLayer[j]);
+    }
+}
+
+// Backward propagation
+void NeuralNetwork::backward(std::vector<double> &input, std::vector<double> &output, double learningRate) {
+    // Calculate output layer error and deltas
+    std::vector<double> outputErrors(outputLayer.size());
+    std::vector<double> outputDeltas(outputLayer.size());
+    for (int i = 0; i < outputLayer.size(); ++i) {
+        outputErrors[i] = output[i] - outputLayer[i];
+        outputDeltas[i] = outputErrors[i] * sigmoid_derivative(outputLayer[i]);
+    }
+
+    // Calculate hidden layer error and deltas
+    std::vector<double> hiddenErrors(hiddenLayer.size());
+    std::vector<double> hiddenDeltas(hiddenLayer.size());
+    for (int i = 0; i < hiddenLayer.size(); ++i) {
+        hiddenErrors[i] = 0.0;
+        for (int j = 0; j < outputLayer.size(); ++j) {
+            hiddenErrors[i] += outputDeltas[j] * weightsHiddenOutput[i][j];
+        }
+        hiddenDeltas[i] = hiddenErrors[i] * sigmoid_derivative(hiddenLayer[i]);
+    }
+
+    // Update weights between hidden and output layers
+    for (int i = 0; i < hiddenLayer.size(); ++i) {
+        for (int j = 0; j < outputLayer.size(); ++j) {
+            weightsHiddenOutput[i][j] += learningRate * outputDeltas[j] * hiddenLayer[i];
         }
     }
-};
 
-class MLP {
-public:
-    std::vector<Layer> layers;
-
-    MLP(const std::vector<int>& layer_sizes) {
-        for (size_t i = 1; i < layer_sizes.size(); ++i) {
-            layers.emplace_back(layer_sizes[i], layer_sizes[i-1]);
+    // Update weights between input and hidden layers
+    for (int i = 0; i < input.size(); ++i) {
+        for (int j = 0; j < hiddenLayer.size(); ++j) {
+            weightsInputHidden[i][j] += learningRate * hiddenDeltas[j] * input[i];
         }
     }
+}
 
-    std::vector<double> forward(const std::vector<double>& inputs) {
-        std::vector<double> current_inputs = inputs;
-        for (auto& layer : layers) {
-            std::vector<double> layer_outputs;
-            for (auto& neuron : layer.neurons) {
-                double sum = 0.0;
-                for (size_t i = 0; i < current_inputs.size(); ++i) {
-                    sum += current_inputs[i] * neuron.weights[i];
-                }
-                sum += neuron.bias;
-                neuron.output = sigmoid(sum);
-                layer_outputs.push_back(neuron.output);
+// Training function
+void NeuralNetwork::train(std::vector<std::vector<double>> &inputs, std::vector<std::vector<double>> &outputs, int epochs, double learningRate) {
+    double minError = std::numeric_limits<double>::max();
+    int patience = 5;  // Number of epochs to wait for an improvement before stopping
+    int wait = 0;
+
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        double totalError = 0.0;
+
+        for (int i = 0; i < inputs.size(); ++i) {
+            forward(inputs[i]);
+            backward(inputs[i], outputs[i], learningRate);
+
+            // Calculate total error for monitoring
+            for (int j = 0; j < outputs[i].size(); ++j) {
+                totalError += std::pow(outputs[i][j] - outputLayer[j], 2);
             }
-            current_inputs = layer_outputs;
         }
-        return current_inputs;
-    }
 
-    void train(const std::vector<std::vector<double>>& training_inputs,
-               const std::vector<double>& training_outputs,
-               int epochs, double learning_rate) {
-        for (int epoch = 0; epoch < epochs; ++epoch) {
-            double total_error = 0.0;
-            for (size_t i = 0; i < training_inputs.size(); ++i) {
-                auto output = forward(training_inputs[i]);
-                std::vector<std::vector<double>> deltas(layers.size());
+        double avgError = totalError / inputs.size();
+        std::cout << "Epoch " << epoch + 1 << " - Error: " << avgError << std::endl;
 
-                // Calculate output layer deltas
-                double error = training_outputs[i] - output[0];
-                total_error += std::abs(error);
-                deltas.back().push_back(error * sigmoid_derivative(output[0]));
-
-                // Calculate hidden layer deltas
-                for (int l = layers.size() - 2; l >= 0; --l) {
-                    for (size_t j = 0; j < layers[l].neurons.size(); ++j) {
-                        double error = 0.0;
-                        for (size_t k = 0; k < layers[l+1].neurons.size(); ++k) {
-                            error += deltas[l+1][k] * layers[l+1].neurons[k].weights[j];
-                        }
-                        deltas[l].push_back(error * sigmoid_derivative(layers[l].neurons[j].output));
-                    }
-                }
-
-                // Update weights and biases
-                for (size_t l = 0; l < layers.size(); ++l) {
-                    std::vector<double> inputs = (l == 0) ? training_inputs[i] : std::vector<double>(layers[l-1].neurons.size());
-                    if (l > 0) {
-                        for (size_t j = 0; j < layers[l-1].neurons.size(); ++j) {
-                            inputs[j] = layers[l-1].neurons[j].output;
-                        }
-                    }
-                    for (size_t j = 0; j < layers[l].neurons.size(); ++j) {
-                        for (size_t k = 0; k < inputs.size(); ++k) {
-                            layers[l].neurons[j].weights[k] += learning_rate * deltas[l][j] * inputs[k];
-                        }
-                        layers[l].neurons[j].bias += learning_rate * deltas[l][j];
-                    }
-                }
-            }
-            if (epoch % 100 == 0) {
-                std::cout << "Epoch " << epoch << ", Error: " << total_error << std::endl;
+        // Early stopping check
+        if (avgError < minError) {
+            minError = avgError;
+            wait = 0;  // Reset wait
+        } else {
+            wait++;
+            if (wait >= patience) {
+                std::cout << "Early stopping triggered at epoch " << epoch + 1 << std::endl;
+                break;
             }
         }
     }
-};
+}
 
+// Prediction function
+std::vector<double> NeuralNetwork::predict(std::vector<double> &input) {
+    forward(input);
+    return outputLayer;
+}
 
-std::vector<std::vector<double>> read_csv(const std::string& filename) {
-    std::vector<std::vector<double>> data;
+// Helper function to load data from CSV
+std::vector<std::vector<double>> loadCSV(const std::string &filename, bool hasLabels = false) {
     std::ifstream file(filename);
-    std::string line;
+    std::vector<std::vector<double>> data;
 
-    // Skip the header
-    std::getline(file, line);
+    if (!file.is_open()) {
+        std::cerr << "Error: Could not open file " << filename << std::endl;
+        return data;  // Return an empty vector
+    }
+
+    std::string line;
+    bool firstLine = true;
 
     while (std::getline(file, line)) {
+        if (firstLine && hasLabels) {
+            firstLine = false;
+            continue;
+        }
+
         std::vector<double> row;
         std::stringstream ss(line);
-        std::string cell;
+        std::string value;
 
-        while (std::getline(ss, cell, ',')) {
+        while (std::getline(ss, value, ',')) {
             try {
-                // Trim whitespace
-                cell.erase(0, cell.find_first_not_of(" \t\n\r\f\v"));
-                cell.erase(cell.find_last_not_of(" \t\n\r\f\v") + 1);
-
-                // Convert 'True' to 1 and 'False' to 0
-                if (cell == "True") {
-                    row.push_back(1.0);
-                } else if (cell == "False") {
-                    row.push_back(0.0);
-                } else if (!cell.empty()) {
-                    row.push_back(std::stod(cell));
-                } else {
-                    // Handle empty cells by pushing a default value (e.g., 0)
-                    row.push_back(0.0);
-                }
+                row.push_back(std::stod(value));  // Convert string to double
             } catch (const std::invalid_argument& e) {
-                std::cerr << "Invalid argument: " << cell << " in file " << filename << std::endl;
-                // You might want to handle this error differently
-                row.push_back(0.0);
-            } catch (const std::out_of_range& e) {
-                std::cerr << "Out of range: " << cell << " in file " << filename << std::endl;
-                // You might want to handle this error differently
-                row.push_back(0.0);
+                std::cerr << "Conversion error: " << e.what() << " for value '" << value << "'" << std::endl;
+                return data;  // Return an empty vector on error
             }
         }
+
         data.push_back(row);
     }
 
+    file.close();
     return data;
 }
 
 
-void evaluate_model(MLP& mlp, const std::vector<std::vector<double>>& inputs, const std::vector<double>& expected_outputs) {
-    int correct = 0;
-    int total = inputs.size();
-    int true_positives = 0, false_positives = 0, true_negatives = 0, false_negatives = 0;
-
-    for (size_t i = 0; i < inputs.size(); ++i) {
-        auto output = mlp.forward(inputs[i]);
-        int predicted = (output[0] > 0.5) ? 1 : 0;
-        int expected = expected_outputs[i];
-
-        if (predicted == expected) {
-            correct++;
-        }
-
-        if (predicted == 1 && expected == 1) true_positives++;
-        if (predicted == 1 && expected == 0) false_positives++;
-        if (predicted == 0 && expected == 0) true_negatives++;
-        if (predicted == 0 && expected == 1) false_negatives++;
-    }
-
-    double accuracy = static_cast<double>(correct) / total;
-
-    // Metrics for class 1 (Flare)
-    double precision_flare = true_positives / static_cast<double>(true_positives + false_positives);
-    double recall_flare = true_positives / static_cast<double>(true_positives + false_negatives);
-    double f1_score_flare = 2 * (precision_flare * recall_flare) / (precision_flare + recall_flare);
-
-    // Metrics for class 0 (No Flare)
-    double precision_no_flare = true_negatives / static_cast<double>(true_negatives + false_negatives);
-    double recall_no_flare = true_negatives / static_cast<double>(true_negatives + false_positives);
-    double f1_score_no_flare = 2 * (precision_no_flare * recall_no_flare) / (precision_no_flare + recall_no_flare);
-
-    std::cout << "Accuracy: " << accuracy << std::endl;
-    std::cout << "Metrics for Flare (Class 1):" << std::endl;
-    std::cout << "Precision: " << precision_flare << std::endl;
-    std::cout << "Recall: " << recall_flare << std::endl;
-    std::cout << "F1 Score: " << f1_score_flare << std::endl;
-
-    std::cout << "\nMetrics for No Flare (Class 0):" << std::endl;
-    std::cout << "Precision: " << precision_no_flare << std::endl;
-    std::cout << "Recall: " << recall_no_flare << std::endl;
-    std::cout << "F1 Score: " << f1_score_no_flare << std::endl;
-
-    std::cout << "\nConfusion Matrix:" << std::endl;
-    std::cout << "True Positives: " << true_positives << " | False Negatives: " << false_negatives << std::endl;
-    std::cout << "False Positives: " << false_positives << " | True Negatives: " << true_negatives << std::endl;
-}
-
-
 int main() {
-    // Read training data
-    auto training_data = read_csv("data/flare_train_balanced.csv");
-    // auto training_data = read_csv("data/flare_train_top_features.csv");
-    std::vector<std::vector<double>> training_inputs;
-    std::vector<double> training_outputs;
-    for (const auto& row : training_data) {
-        training_inputs.push_back(std::vector<double>(row.begin(), row.end() - 1));
-        training_outputs.push_back(row.back());
+    // Load data
+    std::vector<std::vector<double>> train_data = loadCSV("data/flare_train.csv", true);
+    std::vector<std::vector<double>> test_data = loadCSV("data/flare_test.csv", true);
+
+    // Separate features and labels for training data
+    std::vector<std::vector<double>> X_train;
+    std::vector<std::vector<double>> y_train;
+
+    for (const auto& row : train_data) {
+        X_train.push_back(std::vector<double>(row.begin(), row.end() - 1));  // All columns except the last
+        y_train.push_back(std::vector<double>{row.back()});  // The last column
     }
 
-    // Read test data
-    auto test_data = read_csv("data/flare_test.csv");
-    // auto test_data = read_csv("data/flare_test_top_features.csv");
-    std::vector<std::vector<double>> test_inputs;
-    std::vector<double> test_outputs;
+    // Separate features and labels for test data
+    std::vector<std::vector<double>> X_test;
+    std::vector<std::vector<double>> y_test;
+
     for (const auto& row : test_data) {
-        test_inputs.push_back(std::vector<double>(row.begin(), row.end() - 1));
-        test_outputs.push_back(row.back());
+        X_test.push_back(std::vector<double>(row.begin(), row.end() - 1));  // All columns except the last
+        y_test.push_back(std::vector<double>{row.back()});  // The last column
     }
 
-    // Create and train the MLP
-    MLP solar_flare_mlp({30, 20, 10, 1});  // 30 input features, two hidden layers (20 and 10 neurons), 1 output neuron
-    // MLP solar_flare_mlp({4, 12, 8, 1});  // 4 input features, two hidden layers (12 and 8 neurons), 1 output neuron
-    solar_flare_mlp.train(training_inputs, training_outputs, 2000, 0.01);  // Increased epochs, reduced learning rate
+    // Initialize the neural network with the chosen learning rate
+    NeuralNetwork nn(X_train[0].size(), 10, 1);
 
-    // Evaluate the model
-    std::cout << "\nTraining set performance:" << std::endl;
-    evaluate_model(solar_flare_mlp, training_inputs, training_outputs);
-    std::cout << "\nTest set performance:" << std::endl;
-    evaluate_model(solar_flare_mlp, test_inputs, test_outputs);
+    // Adjust the learning rate here
+    double learningRate = 0.05;  // Start with a lower learning rate
+    nn.train(X_train, y_train, 1000, learningRate);
+    
+    // Initialize confusion matrix counters
+    int TP = 0, TN = 0, FP = 0, FN = 0;
+
+    // Experiment with different thresholds
+    double threshold = 0.7;  // Adjust this threshold to balance precision and recall
+
+    // Test the neural network and populate confusion matrix
+    for (int i = 0; i < X_test.size(); ++i) {
+        std::vector<double> prediction = nn.predict(X_test[i]);
+        double predicted_class = (prediction[0] >= threshold) ? 1.0 : 0.0;  // Apply adjustable threshold
+        double actual_class = y_test[i][0];
+
+        if (predicted_class == 1.0 && actual_class == 1.0) {
+            TP++;
+        } else if (predicted_class == 0.0 && actual_class == 0.0) {
+            TN++;
+        } else if (predicted_class == 1.0 && actual_class == 0.0) {
+            FP++;
+        } else if (predicted_class == 0.0 && actual_class == 1.0) {
+            FN++;
+        }
+    }
+
+    // Calculate precision and recall
+    double precision = TP / double(TP + FP);
+    double recall = TP / double(TP + FN);
+
+    // Output results
+    std::cout << "Confusion Matrix:" << std::endl;
+    std::cout << "True Positive: " << TP << "  False Positive: " << FP << std::endl;
+    std::cout << "False Negative: " << FN << "  True Negative: " << TN << std::endl;
+    std::cout << "Precision: " << precision << std::endl;
+    std::cout << "Recall: " << recall << std::endl;
 
     return 0;
 }
+
