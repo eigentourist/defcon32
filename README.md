@@ -1,7 +1,7 @@
 # Hacking The Metal: A Spark of Intelligence
 ### Code and materials for Hacking The Metal: A Spark of Intelligence, a workshop for DEF CON 32.
 
-## Discord Server Invite Link
+### Discord Server Invite Link
 https://discord.gg/qkkmzzbQTS
 
 Setup for this workshop consists of:
