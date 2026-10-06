@@ -5,6 +5,7 @@
 #include <string>
 #include <cmath>
 #include <random>
+#include <cstdlib>
 
 
 // Activation function (Sigmoid) and its derivative
@@ -197,11 +198,38 @@ std::vector<std::vector<double>> loadCSV(const std::string &filename, bool hasLa
     return data;
 }
 
+void validateCSVData(const std::vector<std::vector<double>> &data, const std::string &filename) {
+    if (data.empty()) {
+        std::cerr << "Error: no data rows were loaded from " << filename << "." << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+
+    const size_t expectedColumns = data[0].size();
+    if (expectedColumns < 2) {
+        std::cerr << "Error: " << filename
+                  << " must contain at least one feature column and one label column."
+                  << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+
+    for (size_t i = 1; i < data.size(); ++i) {
+        if (data[i].size() != expectedColumns) {
+            std::cerr << "Error: ragged CSV data in " << filename << " at row " << i + 2
+                      << "; expected " << expectedColumns << " columns but found "
+                      << data[i].size() << "." << std::endl;
+            std::exit(EXIT_FAILURE);
+        }
+    }
+}
+
 
 int main() {
     // Load data
     std::vector<std::vector<double>> train_data = loadCSV("data/uap_pilots_train.csv", true);
     std::vector<std::vector<double>> test_data = loadCSV("data/uap_pilots_test.csv", true);
+
+    validateCSVData(train_data, "data/uap_pilots_train.csv");
+    validateCSVData(test_data, "data/uap_pilots_test.csv");
 
     // Separate features and labels for training data
     std::vector<std::vector<double>> X_train;
@@ -264,4 +292,3 @@ int main() {
 
     return 0;
 }
-

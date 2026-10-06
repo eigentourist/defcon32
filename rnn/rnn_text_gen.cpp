@@ -4,10 +4,12 @@
 #include <Eigen/Dense>
 #include <cmath>
 #include <random>
+#include <algorithm>
 
 // Function to apply softmax
 Eigen::VectorXd softmax(const Eigen::VectorXd& x) {
-    Eigen::VectorXd exp_x = x.array().exp();
+    const double max_x = x.maxCoeff();
+    Eigen::VectorXd exp_x = (x.array() - max_x).exp();
     return exp_x / exp_x.sum();
 }
 
@@ -82,7 +84,7 @@ double lossFun(
 
 // Sampling function to generate new sequences from the model
 std::vector<int> sample(
-    Eigen::VectorXd& h,
+    Eigen::VectorXd h,
     int seed_ix,
     int n,
     const Eigen::MatrixXd& Wxh,

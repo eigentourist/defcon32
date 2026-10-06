@@ -1,3 +1,9 @@
+/*
+ * This program demonstrates that a standard single-layer perceptron cannot
+ * solve XOR. XOR is not linearly separable, so training is expected to fail
+ * to classify at least one of the four input combinations correctly.
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>

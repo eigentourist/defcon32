@@ -6,6 +6,7 @@
 #include <cmath>
 #include <algorithm>
 #include <numeric>
+#include <cstdlib>
 #include <Eigen/Dense> 
 
 // Function to load CSV file into a matrix
@@ -81,10 +82,9 @@ void saveCSV(const std::string &filename, const std::vector<std::vector<double>>
     file.close();
 }
 
-// Function to calculate the covariance matrix using Eigen
-Eigen::MatrixXd calculateCovarianceMatrix(const Eigen::MatrixXd &data) {
-    Eigen::MatrixXd centered = data.rowwise() - data.colwise().mean();
-    Eigen::MatrixXd cov = (centered.adjoint() * centered) / double(data.rows() - 1);
+// Function to calculate the covariance matrix from centered data using Eigen
+Eigen::MatrixXd calculateCovarianceMatrix(const Eigen::MatrixXd &centeredData) {
+    Eigen::MatrixXd cov = (centeredData.adjoint() * centeredData) / double(centeredData.rows() - 1);
     return cov;
 }
 
@@ -105,14 +105,15 @@ std::vector<std::vector<double>> performPCA(const std::vector<std::vector<double
         }
     }
 
-    Eigen::MatrixXd covarianceMatrix = calculateCovarianceMatrix(dataMatrix);
+    Eigen::MatrixXd centeredData = dataMatrix.rowwise() - dataMatrix.colwise().mean();
+    Eigen::MatrixXd covarianceMatrix = calculateCovarianceMatrix(centeredData);
     auto [eigenvalues, eigenvectors] = calculateEigen(covarianceMatrix);
 
     // Select the top 'reducedDimensions' eigenvectors
     Eigen::MatrixXd selectedEigenvectors = eigenvectors.leftCols(reducedDimensions);
 
     // Project the data onto the new reduced dimensions
-    Eigen::MatrixXd reducedData = dataMatrix * selectedEigenvectors;
+    Eigen::MatrixXd reducedData = centeredData * selectedEigenvectors;
 
     // Convert Eigen::MatrixXd back to std::vector<std::vector<double>>
     std::vector<std::vector<double>> reducedDataVector(reducedData.rows(), std::vector<double>(reducedDimensions));
@@ -128,6 +129,22 @@ std::vector<std::vector<double>> performPCA(const std::vector<std::vector<double
 int main() {
     // Load data
     std::vector<std::vector<double>> data = loadCSV("data/travelers_train.csv");
+
+    if (data.empty()) {
+        std::cerr << "Error: travelers training data is empty; PCA cannot be performed."
+                  << std::endl;
+        return EXIT_FAILURE;
+    }
+
+    const size_t expectedColumns = data[0].size();
+    for (size_t i = 1; i < data.size(); ++i) {
+        if (data[i].size() != expectedColumns) {
+            std::cerr << "Error: ragged CSV data in row " << i + 2
+                      << "; expected " << expectedColumns << " columns but found "
+                      << data[i].size() << "." << std::endl;
+            return EXIT_FAILURE;
+        }
+    }
 
     // Perform PCA to reduce to 3 dimensions
     int reducedDimensions = 3;

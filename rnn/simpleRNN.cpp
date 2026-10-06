@@ -58,6 +58,8 @@ void SimpleRNN::initialize_weights() {
 void SimpleRNN::forward(const std::vector<std::vector<float>>& input_sequence) {
     std::vector<float> new_hidden_state(hidden_size, 0.0f);
     hidden_state.assign(hidden_size, 0.0f);  // Reset hidden state at the start of each sequence
+    hidden_states.clear();
+    hidden_states.push_back(hidden_state);
 
     // Iterate over each time step in the input sequence
     for (const auto& input_features : input_sequence) {
@@ -77,6 +79,7 @@ void SimpleRNN::forward(const std::vector<std::vector<float>>& input_sequence) {
 
         // Update hidden state for the next time step
         hidden_state = new_hidden_state;
+        hidden_states.push_back(hidden_state);
     }
 
     // Compute the output layer's activations
@@ -94,62 +97,66 @@ void SimpleRNN::forward(const std::vector<std::vector<float>>& input_sequence) {
 
 void SimpleRNN::backward(const std::vector<float>& target, float learning_rate, const std::vector<std::vector<float>>& input_sequence) {
     std::vector<float> output_error(output_size, 0.0f);
-    std::vector<float> hidden_error(hidden_size, 0.0f);
+    std::vector<std::vector<float>> dWhy(output_size, std::vector<float>(hidden_size, 0.0f));
+    std::vector<float> dby(output_size, 0.0f);
+    std::vector<std::vector<float>> dWxh(hidden_size, std::vector<float>(input_size, 0.0f));
+    std::vector<std::vector<float>> dWhh(hidden_size, std::vector<float>(hidden_size, 0.0f));
+    std::vector<float> dbh(hidden_size, 0.0f);
+    std::vector<float> hidden_gradient(hidden_size, 0.0f);
 
     const float clip_value = 0.5f;  // Adjust this value if necessary
 
     // Output layer error (no activation function, so no derivative needed)
     for (int i = 0; i < output_size; ++i) {
         output_error[i] = target[i] - output[i];
-    }
-
-    // Hidden layer error
-    for (int i = 0; i < hidden_size; ++i) {
-        for (int j = 0; j < output_size; ++j) {
-            hidden_error[i] += output_error[j] * Why[j][i];
-        }
-        hidden_error[i] *= relu_derivative(hidden_state[i]);
-    }
-
-    // Update Why and by with gradient clipping
-    for (int i = 0; i < output_size; ++i) {
+        dby[i] = output_error[i];
         for (int j = 0; j < hidden_size; ++j) {
-            float gradient = learning_rate * output_error[i] * hidden_state[j];
-            // Clip the gradient
-            gradient = std::max(-clip_value, std::min(clip_value, gradient));
-            Why[i][j] += gradient;
+            dWhy[i][j] = output_error[i] * hidden_states.back()[j];
+            hidden_gradient[j] += output_error[i] * Why[i][j];
         }
-        float bias_gradient = learning_rate * output_error[i];
-        // Clip the bias gradient
-        bias_gradient = std::max(-clip_value, std::min(clip_value, bias_gradient));
-        by[i] += bias_gradient;
     }
 
-    // Update Whh and bh with gradient clipping
-    for (int i = 0; i < hidden_size; ++i) {
-        for (int j = 0; j < hidden_size; ++j) {
-            float gradient = learning_rate * hidden_error[i] * hidden_state[j];
-            // Clip the gradient
-            gradient = std::max(-clip_value, std::min(clip_value, gradient));
-            Whh[i][j] += gradient;
-        }
-        float bias_gradient = learning_rate * hidden_error[i];
-        // Clip the bias gradient
-        bias_gradient = std::max(-clip_value, std::min(clip_value, bias_gradient));
-        bh[i] += bias_gradient;
-    }
-
-    // Update Wxh with gradient clipping (now considering multiple input features)
-    for (int t = 0; t < input_sequence.size(); ++t) {
-        const auto& input_features = input_sequence[t];
+    // Backpropagate the final-output error through every time step.
+    for (int t = static_cast<int>(input_sequence.size()) - 1; t >= 0; --t) {
+        std::vector<float> activation_gradient(hidden_size, 0.0f);
         for (int i = 0; i < hidden_size; ++i) {
+            activation_gradient[i] = hidden_gradient[i] * relu_derivative(hidden_states[t + 1][i]);
+            dbh[i] += activation_gradient[i];
             for (int j = 0; j < input_size; ++j) {
-                float gradient = learning_rate * hidden_error[i] * input_features[j];
-                // Clip the gradient
-                gradient = std::max(-clip_value, std::min(clip_value, gradient));
-                Wxh[i][j] += gradient;
+                dWxh[i][j] += activation_gradient[i] * input_sequence[t][j];
+            }
+            for (int j = 0; j < hidden_size; ++j) {
+                dWhh[i][j] += activation_gradient[i] * hidden_states[t][j];
             }
         }
+
+        std::vector<float> previous_hidden_gradient(hidden_size, 0.0f);
+        for (int j = 0; j < hidden_size; ++j) {
+            for (int i = 0; i < hidden_size; ++i) {
+                previous_hidden_gradient[j] += Whh[i][j] * activation_gradient[i];
+            }
+        }
+        hidden_gradient = previous_hidden_gradient;
+    }
+
+    auto clipped_update = [learning_rate, clip_value](float gradient) {
+        return std::max(-clip_value, std::min(clip_value, learning_rate * gradient));
+    };
+
+    for (int i = 0; i < output_size; ++i) {
+        for (int j = 0; j < hidden_size; ++j) {
+            Why[i][j] += clipped_update(dWhy[i][j]);
+        }
+        by[i] += clipped_update(dby[i]);
+    }
+    for (int i = 0; i < hidden_size; ++i) {
+        for (int j = 0; j < input_size; ++j) {
+            Wxh[i][j] += clipped_update(dWxh[i][j]);
+        }
+        for (int j = 0; j < hidden_size; ++j) {
+            Whh[i][j] += clipped_update(dWhh[i][j]);
+        }
+        bh[i] += clipped_update(dbh[i]);
     }
 }
 
@@ -182,6 +189,14 @@ FeatureBatch SimpleRNN::convertTempBatchToFeatureBatch(const TempBatch& tempBatc
 
 
 void SimpleRNN::train(std::vector<TempBatch>& data, int epochs, float learning_rate) {
+    constexpr size_t minimum_batches = 100;
+    if (data.size() < minimum_batches) {
+        std::cerr << "Error: a minimum of " << minimum_batches
+                  << " temperature batches is necessary for this demonstration; found "
+                  << data.size() << "." << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+
     for (int epoch = 0; epoch < epochs; ++epoch) {
         // std::cout << "------- Epoch " << epoch << " -------" << std::endl;
 
@@ -235,9 +250,9 @@ void SimpleRNN::read_csv(const std::string& filename,
                                std::vector<float>& avg7) {
     std::ifstream file(filename);
     std::string line;
+    std::string is_fall_str;
     std::string is_spring_str;
     std::string is_summer_str;
-    std::string is_fall_str;
     std::string is_winter_str;
     std::string year_str;
     std::string temp_str;
@@ -254,23 +269,23 @@ void SimpleRNN::read_csv(const std::string& filename,
 
     while (std::getline(file, line)) {
         std::stringstream ss(line);
+        std::getline(ss, is_fall_str, ',');
         std::getline(ss, is_spring_str, ',');
         std::getline(ss, is_summer_str, ',');
-        std::getline(ss, is_fall_str, ',');
         std::getline(ss, is_winter_str, ',');
         std::getline(ss, year_str, ',');
         std::getline(ss, temp_str, ',');
         std::getline(ss, avg3_str, ',');
         std::getline(ss, avg7_str, ',');
 
+        is_fall.push_back({ std::stof(is_fall_str) });
         is_spring.push_back({ std::stof(is_spring_str) });
         is_summer.push_back({ std::stof(is_summer_str) });
-        is_fall.push_back({ std::stof(is_fall_str) });
         is_winter.push_back({ std::stof(is_winter_str) });
-        year.push_back({ std::stof(is_winter_str) });
+        year.push_back({ std::stof(year_str) });
         temps.push_back({ std::stof(temp_str) });
         avg3.push_back({ std::stof(avg3_str) });
-        avg7.push_back({ std::stof(avg3_str) });
+        avg7.push_back({ std::stof(avg7_str) });
     }
 
     std::cout << "Loaded " << is_spring.size() << " is_spring flags." << std::endl;

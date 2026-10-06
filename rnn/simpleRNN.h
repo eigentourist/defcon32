@@ -8,6 +8,8 @@
 #include <sstream>
 #include <cmath>
 #include <iomanip>
+#include <algorithm>
+#include <cstdlib>
 
 // Activation Function and its Derivative
 inline float sigmoid(float x) {
@@ -77,6 +79,7 @@ private:
     int input_size, hidden_size, output_size;
     std::vector<float> hidden_state;
     std::vector<float> output;
+    std::vector<std::vector<float>> hidden_states;
 
     std::vector<std::vector<float>> Wxh, Whh, Why;
     std::vector<float> bh, by;

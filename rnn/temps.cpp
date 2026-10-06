@@ -3,7 +3,7 @@
 
 int main() {
     // Initialize RNN parameters
-    int input_size = 1;
+    int input_size = 8;
     int hidden_size = 16;
     int output_size = 1;
     int epochs = 1000;
@@ -28,6 +28,15 @@ int main() {
     std::vector<TempBatch> batches;
     int id_counter = 1;  // To give each TempReading a unique id
 
+    const size_t minimum_readings = static_cast<size_t>(sequence_length + 1);
+    if (temps.size() < minimum_readings) {
+        std::cerr << "Error: a sequence length of " << sequence_length
+                  << " requires at least " << minimum_readings
+                  << " temperature readings; found " << temps.size() << "."
+                  << std::endl;
+        std::exit(EXIT_FAILURE);
+    }
+
     for (int i = 0; i <= temps.size() - sequence_length - 1; ++i) {  
         TempBatch t;
         t.id = id_counter++;  // Assign a unique id to each TempReading
@@ -36,10 +45,10 @@ int main() {
             t.is_spring.push_back(is_spring[j]);
             t.is_summer.push_back(is_summer[j]);
             t.is_fall.push_back(is_fall[j]);
-            t.is_winter.push_back(is_spring[j]);
+            t.is_winter.push_back(is_winter[j]);
             t.year.push_back(year[j]);
             t.avg3.push_back(avg3[j]);
-            t.avg7.push_back(avg3[j]);
+            t.avg7.push_back(avg7[j]);
             t.temps.push_back(temps[j]);
         }
 
